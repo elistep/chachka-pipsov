@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Пробоулинг</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #090816; color: #fff; user-select: none; touch-action: none;
+    }
+    body {
+      background:
+        radial-gradient(circle at 20% 12%, rgba(0, 148, 255, .22), transparent 28%),
+        radial-gradient(circle at 85% 20%, rgba(255, 122, 0, .25), transparent 30%),
+        linear-gradient(150deg, #070712 0%, #151226 46%, #080713 100%);
+    }
+    .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 16px; }
+    .screen.active { display: flex; }
+    .panel {
+      width: min(620px, 100%); max-height: calc(100vh - 32px); overflow: auto;
+      border: 1px solid rgba(255,255,255,.14); border-radius: 28px; padding: 22px;
+      background: rgba(255,255,255,.1); box-shadow: 0 24px 90px rgba(0,0,0,.42); backdrop-filter: blur(18px);
+    }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(34px, 9vw, 56px); line-height: .95; letter-spacing: -1.5px; margin-bottom: 12px; }
+    h2 { font-size: 28px; line-height: 1.1; letter-spacing: -.6px; }
+    .subtitle { color: rgba(255,255,255,.78); font-size: 16px; line-height: 1.42; margin-bottom: 18px; }
+    .girls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .girl-card {
+      border: 1px solid rgba(255,255,255,.14); border-radius: 24px; overflow: hidden; padding: 0;
+      background: rgba(255,255,255,.08); color: #fff; cursor: pointer; text-align: left;
+      min-height: 230px; position: relative; box-shadow: 0 12px 34px rgba(0,0,0,.2);
+    }
+    .girl-card:active { transform: scale(.98); }
+    .girl-card img { width: 100%; height: 172px; object-fit: cover; object-position: center 34%; display: block; }
+    .girl-info { padding: 12px; }
+    .girl-name { font-size: 20px; font-weight: 900; margin-bottom: 4px; }
+    .girl-skill { color: rgba(255,255,255,.72); font-size: 13px; line-height: 1.25; }
+    .badge {
+      position: absolute; top: 10px; right: 10px; border-radius: 999px; padding: 6px 9px;
+      background: rgba(0,0,0,.48); font-size: 12px; font-weight: 900; backdrop-filter: blur(10px);
+    }
+    .note { color: rgba(255,255,255,.52); font-size: 12px; line-height: 1.35; margin-top: 14px; }
+    #gameScreen { padding: 0; align-items: stretch; justify-content: stretch; }
+    #gameCanvas { width: 100%; height: 100%; display: block; }
+    .hud {
+      position: fixed; z-index: 10; left: 0; right: 0; top: 0; padding: max(10px, env(safe-area-inset-top)) 12px 8px;
+      display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; pointer-events: none;
+      background: linear-gradient(to bottom, rgba(0,0,0,.52), transparent);
+    }
+    .hud-pill {
+      min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px;
+      border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 7px 11px;
+      background: rgba(13,13,23,.52); backdrop-filter: blur(14px); font-weight: 900; font-size: 13px;
+      white-space: nowrap;
+    }
+    .hud-pill.left { justify-self: start; max-width: 145px; overflow: hidden; text-overflow: ellipsis; }
+    .hud-pill.right { justify-self: end; }
+    .mini-photo { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(255,255,255,.52); }
+    .hud-button {
+      pointer-events: auto; width: 42px; height: 42px; border-radius: 50%; border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.12); color: #fff; font-size: 18px; font-weight: 900; cursor: pointer; backdrop-filter: blur(12px);
+    }
+    .hint {
+      position: fixed; z-index: 9; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+      width: min(430px, calc(100% - 28px)); text-align: center; border-radius: 18px; padding: 10px 12px;
+      background: rgba(0,0,0,.36); border: 1px solid rgba(255,255,255,.12); color: rgba(255,255,255,.85);
+      font-size: 13px; line-height: 1.3; backdrop-filter: blur(12px); pointer-events: none;
+    }
+    .overlay {
+      position: fixed; inset: 0; z-index: 40; display: none; align-items: center; justify-content: center; padding: 16px;
+      background: rgba(0,0,0,.64); backdrop-filter: blur(10px);
+    }
+    .overlay.active { display: flex; }
+    .btn {
+      width: 100%; min-height: 52px; border: 0; border-radius: 18px; margin-top: 14px;
+      background: linear-gradient(135deg, #ff7a00, #008cff); color: #fff; font-weight: 900; font-size: 16px; cursor: pointer;
+      box-shadow: 0 16px 38px rgba(0, 140, 255, .18);
+    }
+    .btn:active { transform: scale(.985); }
+    .result-photo {
+      width: 118px; height: 118px; border-radius: 50%; object-fit: cover; object-position: center 28%;
+      display: block; margin: 0 auto 14px; border: 3px solid rgba(255,255,255,.72); box-shadow: 0 16px 42px rgba(0,0,0,.34);
+    }
+    .result-score { font-size: clamp(48px, 14vw, 76px); font-weight: 1000; line-height: .95; letter-spacing: -2px; margin: 16px 0 8px; }
+    .result-text { color: rgba(255,255,255,.76); line-height: 1.4; margin-top: 8px; }
+    @media (max-width: 390px) {
+      .panel { padding: 17px; border-radius: 24px; }
+      .girls { gap: 9px; }
+      .girl-card { min-height: 210px; border-radius: 20px; }
+      .girl-card img { height: 154px; }
+      .girl-name { font-size: 18px; }
+      .hud-pill { font-size: 12px; padding: 6px 9px; }
+      .mini-photo { width: 28px; height: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <section id="startScreen" class="screen active">
+    <div class="panel">
+      <h1>Пробоулинг</h1>
+      <p class="subtitle">Выбери девочку, зажми шар снизу, проведи вверх и отпусти. Нужно сбить как можно больше кеглей за 5 бросков.</p>
+      <div id="girls" class="girls"></div>
+      <p class="note">Если имена стоят не в том порядке, поменяй только поле <b>name</b> в массиве <b>girlsData</b> в коде.</p>
+    </div>
+  </section>
+
+  <section id="gameScreen" class="screen">
+    <canvas id="gameCanvas"></canvas>
+    <div class="hud">
+      <div class="hud-pill left"><img id="hudPhoto" class="mini-photo" alt=""><span id="hudName">Игрок</span></div>
+      <button id="menuButton" class="hud-button" type="button">≡</button>
+      <div class="hud-pill right"><span id="hudScore">0</span> очков · <span id="hudThrow">1/5</span></div>
+    </div>
+    <div id="hint" class="hint">Зажми шар, проведи вверх и отпусти. Чем ровнее бросок — тем больше кеглей.</div>
+  </section>
+
+  <section id="resultScreen" class="screen">
+    <div class="panel" style="text-align:center">
+      <img id="resultPhoto" class="result-photo" alt="">
+      <h2 id="resultTitle">Раунд завершён</h2>
+      <div id="resultScore" class="result-score">0/50</div>
+      <p id="resultText" class="result-text">Результат готов.</p>
+      <button id="againButton" class="btn" type="button">Играть ещё раз</button>
+      <button id="chooseButton" class="btn" type="button">Выбрать другую девочку</button>
+    </div>
+  </section>
+
+  <div id="menuOverlay" class="overlay">
+    <div class="panel" style="text-align:center">
+      <h2>Пауза</h2>
+      <p class="result-text">Можно продолжить, начать заново или вернуться к выбору персонажа.</p>
+      <button id="continueButton" class="btn" type="button">Продолжить</button>
+      <button id="restartButton" class="btn" type="button">Начать заново</button>
+      <button id="backButton" class="btn" type="button">К выбору девочки</button>
+    </div>
+  </div>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) { tg.ready(); tg.expand(); tg.MainButton?.hide(); }
+
+    const girlsData = [
+      { name: "Настя", photo: "assets/girls/nastya.jpg", ball: "#1e9bf0", skill: "ровный бросок", power: 1.00, control: 1.03 },
+      { name: "Даша", photo: "assets/girls/dasha.jpg", ball: "#27a7ff", skill: "точная траектория", power: .96, control: 1.10 },
+      { name: "Света", photo: "assets/girls/sveta.jpg", ball: "#ff7a00", skill: "сильный удар", power: 1.12, control: .96 },
+      { name: "Эля", photo: "assets/girls/elya.jpg", ball: "#86c83d", skill: "опасный подкрут", power: 1.05, control: 1.00 }
+    ];
+
+    const startScreen = document.getElementById("startScreen");
+    const gameScreen = document.getElementById("gameScreen");
+    const resultScreen = document.getElementById("resultScreen");
+    const girlsWrap = document.getElementById("girls");
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const hudPhoto = document.getElementById("hudPhoto");
+    const hudName = document.getElementById("hudName");
+    const hudScore = document.getElementById("hudScore");
+    const hudThrow = document.getElementById("hudThrow");
+    const hint = document.getElementById("hint");
+    const resultPhoto = document.getElementById("resultPhoto");
+    const resultTitle = document.getElementById("resultTitle");
+    const resultScore = document.getElementById("resultScore");
+    const resultText = document.getElementById("resultText");
+    const againButton = document.getElementById("againButton");
+    const chooseButton = document.getElementById("chooseButton");
+    const menuButton = document.getElementById("menuButton");
+    const menuOverlay = document.getElementById("menuOverlay");
+    const continueButton = document.getElementById("continueButton");
+    const restartButton = document.getElementById("restartButton");
+    const backButton = document.getElementById("backButton");
+
+    const loadedImages = new Map();
+    const maxThrows = 5;
+    let selected = girlsData[0];
+    let totalScore = 0;
+    let throwNumber = 1;
+    let pins = [];
+    let ball = null;
+    let mode = "idle";
+    let paused = false;
+    let aim = { active: false, x: 0, y: 0 };
+    let lastTs = 0;
+    let rollTimer = 0;
+    let message = "";
+    let messageUntil = 0;
+    let raf = null;
+
+    preloadImages();
+    renderCards();
+    bindEvents();
+    resizeCanvas();
+
+    function preloadImages() {
+      girlsData.forEach(girl => {
+        const img = new Image();
+        img.src = girl.photo;
+        loadedImages.set(girl.photo, img);
+      });
+    }
+
+    function renderCards() {
+      girlsWrap.innerHTML = "";
+      girlsData.forEach((girl, index) => {
+        const card = document.createElement("button");
+        card.className = "girl-card";
+        card.type = "button";
+        card.innerHTML = `
+          <span class="badge">#${index + 1}</span>
+          <img src="${girl.photo}" alt="${girl.name}">
+          <div class="girl-info">
+            <div class="girl-name">${girl.name}</div>
+            <div class="girl-skill">${girl.skill}</div>
+          </div>
+        `;
+        card.addEventListener("click", () => startGame(girl));
+        girlsWrap.appendChild(card);
+      });
+    }
+
+    function setScreen(screen) {
+      startScreen.classList.remove("active");
+      gameScreen.classList.remove("active");
+      resultScreen.classList.remove("active");
+      screen.classList.add("active");
+    }
+
+    function startGame(girl) {
+      selected = girl;
+      totalScore = 0;
+      throwNumber = 1;
+      hudPhoto.src = selected.photo;
+      hudName.textContent = selected.name;
+      hudScore.textContent = totalScore;
+      setScreen(gameScreen);
+      menuOverlay.classList.remove("active");
+      paused = false;
+      resizeCanvas();
+      prepareThrow();
+      cancelAnimationFrame(raf);
+      lastTs = 0;
+      raf = requestAnimationFrame(loop);
+    }
+
+    function prepareThrow() {
+      pins = createPins();
+      const lane = getLane();
+      const rect = canvas.getBoundingClientRect();
+      ball = {
+        x: rect.width / 2,
+        y: rect.height - Math.max(92, rect.height * .115),
+        vx: 0,
+        vy: 0,
+        r: Math.max(17, Math.min(24, rect.width * .045)),
+        spin: 0,
+        angle: 0,
+        color: selected.ball
+      };
+      mode = "ready";
+      aim.active = false;
+      rollTimer = 0;
+      message = "Бросок " + throwNumber + " из " + maxThrows;
+      messageUntil = performance.now() + 1150;
+      hudThrow.textContent = throwNumber + "/" + maxThrows;
+      hint.textContent = "Зажми шар, проведи вверх и отпусти. Свайп влево/вправо меняет направление.";
+    }
+
+    function createPins() {
+      const rect = canvas.getBoundingClientRect();
+      const w = rect.width;
+      const top = Math.max(118, rect.height * .135);
+      const gapX = Math.max(22, Math.min(34, w * .058));
+      const gapY = Math.max(25, Math.min(38, rect.height * .045));
+      const cx = w / 2;
+      const rows = [1, 2, 3, 4];
+      const list = [];
+      rows.forEach((count, row) => {
+        for (let i = 0; i < count; i++) {
+          const x = cx + (i - (count - 1) / 2) * gapX;
+          const y = top + row * gapY;
+          list.push({ x, y, ox: x, oy: y, r: Math.max(10, Math.min(14, w * .026)), vx: 0, vy: 0, angle: 0, fallen: false, hit: false });
+        }
+      });
+      return list;
+    }
+
+    function bindEvents() {
+      window.addEventListener("resize", resizeCanvas);
+      canvas.addEventListener("pointerdown", onPointerDown);
+      canvas.addEventListener("pointermove", onPointerMove);
+      canvas.addEventListener("pointerup", onPointerUp);
+      canvas.addEventListener("pointercancel", cancelAim);
+      menuButton.addEventListener("click", () => { if (mode !== "idle") { paused = true; menuOverlay.classList.add("active"); } });
+      continueButton.addEventListener("click", () => { paused = false; menuOverlay.classList.remove("active"); lastTs = 0; });
+      restartButton.addEventListener("click", () => startGame(selected));
+      backButton.addEventListener("click", () => { paused = false; menuOverlay.classList.remove("active"); mode = "idle"; setScreen(startScreen); });
+      againButton.addEventListener("click", () => startGame(selected));
+      chooseButton.addEventListener("click", () => setScreen(startScreen));
+      window.addEventListener("keydown", e => {
+        if (e.key === "Escape" && gameScreen.classList.contains("active")) {
+          paused = !paused;
+          menuOverlay.classList.toggle("active", paused);
+          lastTs = 0;
+        }
+      });
+    }
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.floor(window.innerWidth * dpr);
+      const height = Math.floor(window.innerHeight * dpr);
+      canvas.width = width;
+      canvas.height = height;
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (gameScreen.classList.contains("active")) {
+        const savedScore = totalScore;
+        pins = createPins();
+        totalScore = savedScore;
+        if (ball) {
+          const rect = canvas.getBoundingClientRect();
+          ball.x = rect.width / 2;
+          ball.y = rect.height - Math.max(92, rect.height * .115);
+        }
+      }
+    }
+
+    function toCanvasPoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    }
+
+    function onPointerDown(event) {
+      if (paused || mode !== "ready" || !ball) return;
+      const p = toCanvasPoint(event);
+      const d = Math.hypot(p.x - ball.x, p.y - ball.y);
+      if (d < 120 || p.y > canvas.getBoundingClientRect().height * .58) {
+        aim.active = true;
+        aim.x = p.x;
+        aim.y = p.y;
+        canvas.setPointerCapture?.(event.pointerId);
+      }
+    }
+
+    function onPointerMove(event) {
+      if (!aim.active || paused || mode !== "ready") return;
+      const p = toCanvasPoint(event);
+      aim.x = p.x;
+      aim.y = p.y;
+    }
+
+    function onPointerUp(event) {
+      if (!aim.active || paused || mode !== "ready") return;
+      const p = toCanvasPoint(event);
+      aim.x = p.x;
+      aim.y = p.y;
+      throwBall();
+    }
+
+    function cancelAim() {
+      aim.active = false;
+    }
+
+    function throwBall() {
+      const dx = aim.x - ball.x;
+      const dy = aim.y - ball.y;
+      let len = Math.hypot(dx, dy);
+      let dirX = dx / Math.max(1, len);
+      let dirY = dy / Math.max(1, len);
+      if (len < 35 || dirY > -0.18) {
+        dirX = 0;
+        dirY = -1;
+        len = 130;
+      }
+      const power = clamp(len / 145, .62, 1.36) * selected.power;
+      const correction = selected.control;
+      ball.vx = dirX * 8.9 * power * correction;
+      ball.vy = Math.min(-6.4, dirY * 10.7 * power);
+      ball.spin = ball.vx * .035;
+      aim.active = false;
+      mode = "rolling";
+      rollTimer = 0;
+      hint.textContent = "Шар катится. Ждём результат броска.";
+      if (navigator.vibrate) navigator.vibrate(16);
+    }
+
+    function loop(ts) {
+      if (!lastTs) lastTs = ts;
+      const dt = Math.min(.033, (ts - lastTs) / 1000);
+      lastTs = ts;
+      if (!paused) update(dt, ts);
+      draw(ts);
+      raf = requestAnimationFrame(loop);
+    }
+
+    function update(dt, ts) {
+      if (mode !== "rolling") return;
+      const scale = dt * 60;
+      rollTimer += dt;
+      ball.x += ball.vx * scale;
+      ball.y += ball.vy * scale;
+      ball.angle += (ball.vx + ball.vy) * .018 * scale;
+      ball.vx *= .992;
+      ball.vy *= .996;
+      const lane = getLane();
+      if (ball.x - ball.r < lane.left) { ball.x = lane.left + ball.r; ball.vx *= -.42; }
+      if (ball.x + ball.r > lane.right) { ball.x = lane.right - ball.r; ball.vx *= -.42; }
+      handleCollisions(scale);
+      pins.forEach(pin => {
+        if (!pin.fallen) return;
+        pin.x += pin.vx * scale;
+        pin.y += pin.vy * scale;
+        pin.vx *= .94;
+        pin.vy *= .94;
+        pin.angle += (pin.vx + pin.vy) * .018 * scale;
+      });
+      if (ball.y < -70 || rollTimer > 3.05) finishThrow(ts);
+    }
+
+    function handleCollisions(scale) {
+      pins.forEach(pin => {
+        if (pin.fallen) return;
+        const dx = pin.x - ball.x;
+        const dy = pin.y - ball.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < pin.r + ball.r) {
+          knockPin(pin, ball.vx * .62 + dx * .045, ball.vy * .26 + dy * .045);
+          ball.vx -= dx / Math.max(1, dist) * .18;
+          ball.vy *= .968;
+        }
+      });
+      pins.forEach(mover => {
+        if (!mover.fallen || Math.hypot(mover.vx, mover.vy) < .45) return;
+        pins.forEach(target => {
+          if (target.fallen) return;
+          const dx = target.x - mover.x;
+          const dy = target.y - mover.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < target.r * 2.45) {
+            knockPin(target, mover.vx * .86 + dx * .03, mover.vy * .86 + dy * .03);
+          }
+        });
+      });
+    }
+
+    function knockPin(pin, vx, vy) {
+      pin.fallen = true;
+      pin.hit = true;
+      pin.vx = vx;
+      pin.vy = vy;
+      pin.angle = Math.random() * Math.PI;
+    }
+
+    function finishThrow(ts) {
+      const down = pins.filter(p => p.fallen).length;
+      totalScore += down;
+      hudScore.textContent = totalScore;
+      mode = "between";
+      message = down === 10 ? "Страйк! 10 кеглей" : "Сбито кеглей: " + down;
+      messageUntil = ts + 1200;
+      if (navigator.vibrate) navigator.vibrate(down === 10 ? [20, 50, 20] : 18);
+      setTimeout(() => {
+        if (!gameScreen.classList.contains("active") || paused) return;
+        if (throwNumber >= maxThrows) endGame();
+        else { throwNumber += 1; prepareThrow(); }
+      }, 1050);
+    }
+
+    function endGame() {
+      mode = "idle";
+      setScreen(resultScreen);
+      resultPhoto.src = selected.photo;
+      resultScore.textContent = totalScore + "/" + (maxThrows * 10);
+      if (totalScore >= 43) {
+        resultTitle.textContent = selected.name + " — королева дорожки";
+        resultText.textContent = "Очень сильная серия. Почти профессиональный боулинг.";
+      } else if (totalScore >= 32) {
+        resultTitle.textContent = selected.name + " уверенно разнесла кегли";
+        resultText.textContent = "Хороший результат: точность и сила на месте.";
+      } else if (totalScore >= 20) {
+        resultTitle.textContent = selected.name + " сыграла нормально";
+        resultText.textContent = "Есть попадания, но можно выбить больше.";
+      } else {
+        resultTitle.textContent = selected.name + " только разогревалась";
+        resultText.textContent = "Первые броски тренировочные. Следующий раунд будет лучше.";
+      }
+    }
+
+    function getLane() {
+      const w = canvas.getBoundingClientRect().width;
+      return { left: w * .13, right: w * .87, top: 80, bottom: w * 0 + window.innerHeight };
+    }
+
+    function draw(ts) {
+      const w = canvas.getBoundingClientRect().width;
+      const h = canvas.getBoundingClientRect().height;
+      ctx.clearRect(0, 0, w, h);
+      drawBackground(w, h);
+      drawLane(w, h);
+      drawPins();
+      drawBall();
+      drawAvatar(w, h);
+      if (aim.active && mode === "ready") drawAim();
+      drawMessage(w, h, ts);
+    }
+
+    function drawBackground(w, h) {
+      const bg = ctx.createLinearGradient(0, 0, 0, h);
+      bg.addColorStop(0, "#0c0b18");
+      bg.addColorStop(.45, "#131226");
+      bg.addColorStop(1, "#070711");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = .22;
+      for (let i = 0; i < 38; i++) {
+        const x = (i * 97) % w;
+        const y = (i * 151) % h;
+        ctx.beginPath();
+        ctx.arc(x, y, (i % 3) + 1, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawLane(w, h) {
+      const lane = getLane();
+      ctx.save();
+      const laneGrad = ctx.createLinearGradient(lane.left, 0, lane.right, 0);
+      laneGrad.addColorStop(0, "#b8732c");
+      laneGrad.addColorStop(.18, "#e7b76b");
+      laneGrad.addColorStop(.5, "#f6ca7d");
+      laneGrad.addColorStop(.82, "#e0a95b");
+      laneGrad.addColorStop(1, "#a96526");
+      roundRect(lane.left, 56, lane.right - lane.left, h + 80, 28);
+      ctx.fillStyle = laneGrad;
+      ctx.fill();
+      ctx.globalAlpha = .18;
+      ctx.strokeStyle = "#5a300f";
+      for (let i = 1; i < 9; i++) {
+        const x = lane.left + (lane.right - lane.left) * i / 9;
+        ctx.beginPath(); ctx.moveTo(x, 64); ctx.lineTo(x, h + 70); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "rgba(0,0,0,.28)";
+      roundRect(lane.left - 38, 56, 28, h + 80, 18); ctx.fill();
+      roundRect(lane.right + 10, 56, 28, h + 80, 18); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,.35)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(lane.left + 12, 72); ctx.lineTo(lane.left + 12, h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(lane.right - 12, 72); ctx.lineTo(lane.right - 12, h); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawPins() {
+      pins.forEach(pin => {
+        ctx.save();
+        ctx.translate(pin.x, pin.y);
+        ctx.rotate(pin.fallen ? pin.angle : 0);
+        if (pin.fallen) {
+          ctx.globalAlpha = .92;
+          roundRect(-18, -7, 36, 14, 7);
+          ctx.fillStyle = "#fff7ea";
+          ctx.fill();
+          ctx.fillStyle = "#e11d48";
+          ctx.fillRect(-5, -7, 10, 14);
+        } else {
+          ctx.shadowColor = "rgba(0,0,0,.28)";
+          ctx.shadowBlur = 8;
+          ctx.shadowOffsetY = 5;
+          ctx.fillStyle = "#fff8ef";
+          ctx.beginPath();
+          ctx.ellipse(0, 0, pin.r * .88, pin.r * 1.45, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = "#e11d48";
+          ctx.fillRect(-pin.r * .65, -pin.r * .15, pin.r * 1.3, pin.r * .28);
+          ctx.fillStyle = "rgba(255,255,255,.7)";
+          ctx.beginPath(); ctx.arc(-pin.r * .25, -pin.r * .48, pin.r * .22, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      });
+    }
+
+    function drawBall() {
+      if (!ball) return;
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+      ctx.rotate(ball.angle);
+      const g = ctx.createRadialGradient(-ball.r * .35, -ball.r * .35, 2, 0, 0, ball.r * 1.35);
+      g.addColorStop(0, "#ffffff");
+      g.addColorStop(.18, ball.color);
+      g.addColorStop(1, "#10111d");
+      ctx.shadowColor = "rgba(0,0,0,.35)";
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 7;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, ball.r, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "rgba(0,0,0,.48)";
+      ctx.beginPath(); ctx.arc(ball.r * .18, -ball.r * .25, ball.r * .13, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ball.r * .42, -ball.r * .03, ball.r * .12, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ball.r * .05, ball.r * .12, ball.r * .11, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    function drawAim() {
+      const dx = aim.x - ball.x;
+      const dy = aim.y - ball.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 8) return;
+      const endX = ball.x + dx;
+      const endY = ball.y + dy;
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,255,255,.86)";
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath(); ctx.moveTo(ball.x, ball.y); ctx.lineTo(endX, endY); ctx.stroke();
+      ctx.setLineDash([]);
+      const a = Math.atan2(dy, dx);
+      ctx.translate(endX, endY);
+      ctx.rotate(a);
+      ctx.fillStyle = "rgba(255,255,255,.9)";
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-18, -9); ctx.lineTo(-18, 9); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+
+    function drawAvatar(w, h) {
+      const img = loadedImages.get(selected.photo);
+      if (!img || !img.complete) return;
+      const size = Math.min(72, Math.max(56, w * .15));
+      const x = 18;
+      const y = h - size - 18;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2); ctx.clip();
+      ctx.drawImage(img, x, y - size * .22, size, size * 1.45);
+      ctx.restore();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(255,255,255,.74)";
+      ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    function drawMessage(w, h, ts) {
+      if (!message || ts > messageUntil) return;
+      ctx.save();
+      const alpha = Math.min(1, (messageUntil - ts) / 260);
+      ctx.globalAlpha = alpha;
+      ctx.font = "900 22px Inter, system-ui, sans-serif";
+      const metrics = ctx.measureText(message);
+      const boxW = Math.min(w - 28, metrics.width + 42);
+      const x = (w - boxW) / 2;
+      const y = Math.max(92, h * .18);
+      roundRect(x, y, boxW, 48, 24);
+      ctx.fillStyle = "rgba(0,0,0,.44)";
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(message, w / 2, y + 25);
+      ctx.restore();
+    }
+
+    function roundRect(x, y, w, h, r) {
+      const rr = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+  </script>
+</body>
+</html>
